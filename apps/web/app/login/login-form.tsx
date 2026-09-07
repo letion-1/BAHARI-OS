@@ -22,8 +22,16 @@ const initialLoginActionState: LoginActionState = {
 
 export function LoginForm({
   nextPath,
+  defaultEmail,
 }: {
   nextPath: string;
+  /**
+   * Prefilled when arriving from an invitation, because the invitation is an
+   * offer to one specific address and acceptance is refused if the session
+   * belongs to any other. Someone with two mailboxes has no way to know which
+   * one was invited unless the form tells them.
+   */
+  defaultEmail?: string;
 }) {
   const [state, formAction, isPending] =
     useActionState(
@@ -52,6 +60,7 @@ export function LoginForm({
         inputMode="email"
         icon={Mail}
         disabled={isPending}
+        defaultValue={defaultEmail}
         required
       />
 
@@ -110,6 +119,7 @@ function Field({
   minLength,
   required,
   disabled,
+  defaultValue,
   icon: Icon,
 }: {
   id: string;
@@ -117,6 +127,7 @@ function Field({
   label: string;
   placeholder: string;
   autoComplete: string;
+  defaultValue?: string;
   type?: string;
   inputMode?:
     | "email"
@@ -152,6 +163,7 @@ function Field({
           minLength={minLength}
           required={required}
           disabled={disabled}
+          defaultValue={defaultValue}
           placeholder={placeholder}
           className="ui-input h-12 pl-10 pr-4 text-sm disabled:cursor-not-allowed disabled:opacity-60"
         />
