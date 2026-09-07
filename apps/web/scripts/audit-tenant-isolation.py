@@ -51,6 +51,9 @@ COMPANY_SCOPED = {
     "availability_checks",
     "yacht_access",
     "yacht_contacts",
+    # Listing and revoking are company-scoped. Acceptance arrives with a token
+    # and no session at all, so that one chain is covered by TOKEN_AUTH below.
+    "company_invitations",
 }
 
 # Tables legitimately queried without a company_id predicate.

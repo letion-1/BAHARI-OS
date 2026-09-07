@@ -22,6 +22,7 @@ import { PageContainer } from "@/components/ui/page-container";
 import { SectionHeader } from "@/components/ui/section-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AccountDeletionPanel } from "@/components/settings/account-deletion-panel";
+import { PasswordPanel } from "@/components/settings/password-panel";
 
 type Account = {
   id: string;
@@ -380,6 +381,8 @@ export default function SettingsPage() {
               />
             </div>
           </section>
+
+          <PasswordPanel />
 
           {/*
             Last on the page, deliberately. Nothing should sit below the

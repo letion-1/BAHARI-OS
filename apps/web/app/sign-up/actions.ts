@@ -5,6 +5,7 @@ import type { User } from "@supabase/supabase-js";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { describePasswordProblem } from "@/lib/auth/password-policy";
 import {
   provisionWorkspaceForUser,
 } from "@/lib/workspace/provision-workspace";
@@ -51,9 +52,24 @@ export async function signUp(
       "Enter a valid work email address.";
   }
 
-  if (password.length < 8) {
+  /*
+   * Delegated to the shared policy rather than an inline length check.
+   *
+   * Signup used to ask for 8 characters while the reset and change-password
+   * paths ask for 10. That mismatch is invisible until the day someone tries
+   * to change the password they signed up with and is told it is too short,
+   * with nothing on screen explaining why the rule moved.
+   *
+   * Login is deliberately left alone: it validates a password that already
+   * exists, and raising its floor would lock out every account created under
+   * the old rule.
+   */
+  const passwordProblem =
+    describePasswordProblem(password);
+
+  if (passwordProblem) {
     fieldErrors.password =
-      "Use at least 8 characters.";
+      passwordProblem;
   }
 
   if (password !== confirmPassword) {

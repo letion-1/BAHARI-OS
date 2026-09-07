@@ -11,6 +11,19 @@ const PUBLIC_ROUTES = [
   "/login",
   "/logout",
   "/sign-up",
+
+  /*
+   * Password recovery. The entire audience for this page is people who cannot
+   * sign in, so requiring a session would make it unreachable by exactly the
+   * people it exists for.
+   *
+   * /reset-password is deliberately NOT here. It is reached only after
+   * /auth/callback?flow=recovery has exchanged the emailed code for a
+   * session, so it always has one, and leaving it protected means a stale or
+   * hand-typed URL lands on the sign-in page instead of an empty form that
+   * cannot work.
+   */
+  "/forgot-password",
 ];
 
 const PUBLIC_ROUTE_PREFIXES = [

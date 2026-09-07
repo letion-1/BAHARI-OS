@@ -222,6 +222,16 @@ function isPublicRoute(
     pathname.startsWith(
       "/reset-password/"
     ) ||
+    /*
+     * An invited person arrives here with a session and, on the common path,
+     * no membership of any company at all. The shell would try to render a
+     * workspace switcher and a company name for a workspace they have not
+     * joined yet, around a page whose entire purpose is to let them join it.
+     */
+    pathname === "/invite" ||
+    pathname.startsWith(
+      "/invite/"
+    ) ||
     pathname.startsWith(
       "/auth/"
     )
@@ -313,6 +323,30 @@ function SidebarFooter({
 }) {
   return (
     <div className="shrink-0 border-t border-sidebar-border bg-sidebar p-5">
+      {/*
+        Shown to everyone rather than gated on role. The sidebar is a client
+        component with no access to the workspace role, and fetching it here
+        would add a request to every page load to hide one link. /team renders
+        its own explanation to anyone who cannot manage the team, and the API
+        refuses them regardless.
+      */}
+      <Link
+        href="/team"
+        onClick={onNavigate}
+        className={`apple-transition mb-1 flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm ${
+          isActiveRoute(
+            pathname,
+            "/team"
+          )
+            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        }`}
+      >
+        <Users className="size-4" />
+
+        Team
+      </Link>
+
       <Link
         href="/settings"
         onClick={

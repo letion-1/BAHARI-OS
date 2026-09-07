@@ -106,6 +106,15 @@ export default async function LoginPage({
                 nextPath={nextPath}
               />
 
+              <div className="mt-5 text-center">
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-medium text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline"
+                >
+                  Forgot your password?
+                </Link>
+              </div>
+
               <div className="mt-6 border-t border-border pt-5 text-center">
                 <p className="text-xs text-muted-foreground">
                   New brokerage?

@@ -15,6 +15,7 @@ import {
   signUp,
   type SignUpActionState,
 } from "@/app/sign-up/actions";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password-policy";
 
 const initialState: SignUpActionState = {
   status: "idle",
@@ -106,10 +107,10 @@ export function SignUpForm() {
         id="password"
         name="password"
         label="Create password"
-        placeholder="At least 8 characters"
+        placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
         autoComplete="new-password"
         type="password"
-        minLength={8}
+        minLength={MIN_PASSWORD_LENGTH}
         icon={LockKeyhole}
         error={
           state.fieldErrors?.password
@@ -125,7 +126,7 @@ export function SignUpForm() {
         placeholder="Repeat your password"
         autoComplete="new-password"
         type="password"
-        minLength={8}
+        minLength={MIN_PASSWORD_LENGTH}
         icon={LockKeyhole}
         error={
           state.fieldErrors
