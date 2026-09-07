@@ -2,6 +2,10 @@ import {
   NextRequest,
   NextResponse,
 } from "next/server";
+import {
+  hashItineraryShareToken,
+  isPlausibleItineraryShareToken,
+} from "@/lib/itinerary/share-token";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -30,7 +34,11 @@ export async function GET(
     const token =
       params.token?.trim();
 
-    if (!token) {
+    /*
+     * Shape-checked before the query. A probing request for a short or
+     * malformed token is answered from the regex rather than the database.
+     */
+    if (!token || !isPlausibleItineraryShareToken(token)) {
       return NextResponse.json(
         {
           success: false,
@@ -50,9 +58,14 @@ export async function GET(
           "charter_itinerary_shares"
         )
         .select(
-          "id, company_id, charter_id, itinerary_id, token, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
+          "id, company_id, charter_id, itinerary_id, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
         )
-        .eq("token", token)
+        /*
+         * Looked up by hash. The plaintext is no longer stored, so this is
+         * the only way to resolve a link, and a database copy yields no
+         * working tokens.
+         */
+        .eq("token_hash", hashItineraryShareToken(token))
         .maybeSingle();
 
     if (shareResult.error) {

@@ -1,4 +1,8 @@
 import crypto from "node:crypto";
+import {
+  generateItineraryShareToken,
+  hashItineraryShareToken,
+} from "@/lib/itinerary/share-token";
 
 import {
   NextRequest,
@@ -85,7 +89,7 @@ export async function GET(
           "charter_itinerary_shares"
         )
         .select(
-          "id, token, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at, created_at, updated_at"
+          "id, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at, created_at, updated_at"
         )
         .eq(
           "company_id",
@@ -159,12 +163,16 @@ export async function GET(
             ? {
                 id:
                   shareResult.data.id,
-                token:
-                  shareResult.data.token,
+                /*
+                 * A GET reads an existing row, which stores only a hash, so
+                 * there is no URL to hand back. hasToken tells the panel to
+                 * offer a replacement link rather than a dead copy button.
+                 */
+                token: null,
+                hasToken: false,
                 isActive:
                   shareResult.data.is_active,
-                publicPath:
-                  `/guest/itinerary/${shareResult.data.token}`,
+                publicPath: null,
                 heroImageUrl:
                   normalizeHeroImage(
                     shareResult.data.hero_image_url
@@ -275,7 +283,7 @@ export async function POST(
           "charter_itinerary_shares"
         )
         .select(
-          "id, token, is_active, hero_image_url"
+          "id, is_active, hero_image_url"
         )
         .eq(
           "company_id",
@@ -373,7 +381,7 @@ export async function POST(
               shareResult.data.id
             )
             .select(
-              "id, token, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
+              "id, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
             )
             .single();
 
@@ -393,8 +401,12 @@ export async function POST(
         );
       }
 
-      const token =
-        makeToken();
+      /*
+       * The raw token exists only in this request. It goes into the response
+       * once and the database keeps its hash, so nothing can recover it
+       * afterwards.
+       */
+      const token = generateItineraryShareToken();
 
       const result =
         await admin
@@ -408,7 +420,10 @@ export async function POST(
               charterId,
             itinerary_id:
               itineraryResult.data.id,
-            token,
+            token_hash:
+              hashItineraryShareToken(
+                token
+              ),
             is_active: true,
             hero_image_url:
               heroImageUrl ===
@@ -424,7 +439,7 @@ export async function POST(
             updated_at: now,
           })
           .select(
-            "id, token, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
+            "id, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
           )
           .single();
 
@@ -440,7 +455,8 @@ export async function POST(
       }
 
       return successShare(
-        result.data
+        result.data,
+        token
       );
     }
 
@@ -486,7 +502,7 @@ export async function POST(
             shareResult.data.id
           )
           .select(
-            "id, token, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
+            "id, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
           )
           .single();
 
@@ -520,14 +536,24 @@ export async function POST(
         );
       }
 
+      /*
+       * Rotation issues a new token and invalidates the old one. The raw
+       * value is returned once here and never again, so a broker who rotates
+       * and closes the panel has to rotate again to get a usable link.
+       */
+      const rotatedToken =
+        generateItineraryShareToken();
+
       const result =
         await admin
           .from(
             "charter_itinerary_shares"
           )
           .update({
-            token:
-              makeToken(),
+            token_hash:
+              hashItineraryShareToken(
+                rotatedToken
+              ),
             is_active: true,
             published_at: now,
             updated_at: now,
@@ -541,7 +567,7 @@ export async function POST(
             shareResult.data.id
           )
           .select(
-            "id, token, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
+            "id, is_active, hero_image_url, published_at, expires_at, view_count, last_viewed_at"
           )
           .single();
 
@@ -557,7 +583,8 @@ export async function POST(
       }
 
       return successShare(
-        result.data
+        result.data,
+        rotatedToken
       );
     }
 
@@ -624,28 +651,42 @@ export async function POST(
   }
 }
 
+/**
+ * Build the share response.
+ *
+ * `rawToken` is passed only by the two paths that just minted one: creation
+ * and rotation. Every other call reads an existing row, which holds a hash
+ * and cannot produce a URL.
+ *
+ * That is the cost of hashing, and it is the same trade the contract link
+ * makes: the link is shown once. `hasToken` says which case this is, so the
+ * panel can offer a replacement rather than leaving a broker looking at
+ * nothing to copy and no explanation.
+ */
 function successShare(
   row: {
     id: string;
-    token: string;
     is_active: boolean;
     hero_image_url: string | null;
     published_at: string;
     expires_at: string | null;
     view_count: number;
     last_viewed_at: string | null;
-  }
+  },
+  rawToken?: string
 ) {
   return NextResponse.json(
     {
       success: true,
       share: {
         id: row.id,
-        token: row.token,
+        token: rawToken ?? null,
+        hasToken: Boolean(rawToken),
         isActive:
           row.is_active,
-        publicPath:
-          `/guest/itinerary/${row.token}`,
+        publicPath: rawToken
+          ? `/guest/itinerary/${rawToken}`
+          : null,
         heroImageUrl:
           normalizeHeroImage(
             row.hero_image_url
@@ -740,12 +781,6 @@ function normalizeExpiry(
   )
     ? null
     : date.toISOString();
-}
-
-function makeToken() {
-  return crypto
-    .randomBytes(24)
-    .toString("hex");
 }
 
 function text(
