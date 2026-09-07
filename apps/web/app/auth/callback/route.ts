@@ -57,32 +57,80 @@ export async function GET(
     );
   }
 
-  if (!code) {
-    return redirectToSignupError(
-      origin,
-      "The verification link is missing its authentication code. Request a new signup email and try again."
-    );
-  }
+  /*
+   * Two ways a link can arrive, and only one of them works for an invitation.
+   *
+   * exchangeCodeForSession is the PKCE exchange. It needs a code verifier that
+   * was stored in the browser when the flow began. That works for signup,
+   * because the person started it in this browser.
+   *
+   * An invitation does not start in a browser at all. It is created
+   * server-side by inviteUserByEmail, so the recipient's browser has never
+   * held a verifier and the exchange cannot succeed. Supabase redirects these
+   * with a token_hash instead, which is verified directly.
+   *
+   * Without this branch an invited colleague clicked their email, reached a
+   * callback that had no code to exchange, and was bounced to /login for a
+   * password that had never been set. The screen told them their password was
+   * wrong. There was no password.
+   */
+  const tokenHash =
+    url.searchParams.get("token_hash");
+
+  const otpType =
+    url.searchParams.get("type");
 
   const supabase =
     await createClient();
 
-  const {
-    error: exchangeError,
-  } =
-    await supabase.auth
-      .exchangeCodeForSession(code);
-
-  if (exchangeError) {
-    console.error(
-      "Supabase signup callback exchange failed:",
-      exchangeError.message
-    );
-
+  if (!code && !tokenHash) {
     return redirectToSignupError(
       origin,
-      "The verification link could not be completed. It may have expired or already been used."
+      "The verification link is missing its authentication code. Request a new email and try again."
     );
+  }
+
+  if (tokenHash) {
+    const {
+      error: verifyError,
+    } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: (otpType as
+        | "invite"
+        | "recovery"
+        | "signup"
+        | "email") ?? "invite",
+    });
+
+    if (verifyError) {
+      console.error(
+        "Supabase token verification failed:",
+        verifyError.message
+      );
+
+      return redirectToSignupError(
+        origin,
+        "The link could not be completed. It may have expired or already been used. Ask for a new one."
+      );
+    }
+  } else if (code) {
+    const {
+      error: exchangeError,
+    } =
+      await supabase.auth
+        .exchangeCodeForSession(code);
+
+    if (exchangeError) {
+      console.error(
+        "Supabase signup callback exchange failed:",
+        exchangeError.message
+      );
+
+      return redirectToSignupError(
+        origin,
+        "The verification link could not be completed. It may have expired or already been used."
+      );
+    }
   }
 
   const {
