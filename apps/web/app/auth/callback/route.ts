@@ -83,11 +83,25 @@ export async function GET(
   const supabase =
     await createClient();
 
+  /*
+   * Neither query parameter means the tokens are in the URL fragment, which
+   * the server cannot see: the browser strips everything after "#" before
+   * sending the request. Supabase uses that shape whenever the project is not
+   * on the PKCE flow, and an invitation created server-side often is.
+   *
+   * So this is handed to a client page rather than reported as a broken link.
+   * The fragment survives a 3xx redirect when the destination has none of its
+   * own, so /auth/complete receives it intact and can read it.
+   */
   if (!code && !tokenHash) {
-    return redirectToSignupError(
-      origin,
-      "The verification link is missing its authentication code. Request a new email and try again."
+    const completeUrl = new URL(
+      "/auth/complete",
+      origin
     );
+
+    completeUrl.searchParams.set("next", next);
+
+    return NextResponse.redirect(completeUrl);
   }
 
   if (tokenHash) {
