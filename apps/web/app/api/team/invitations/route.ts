@@ -113,6 +113,30 @@ export async function POST(request: Request) {
      */
     const existingUser = await findAuthUserByEmail(email);
 
+    /*
+     * An auth row is not the same thing as a usable account.
+     *
+     * inviteUserByEmail creates the Supabase user as a side effect, before the
+     * person has done anything. If that first invitation email was never
+     * opened, or its link expired, the row sits there with no password ever
+     * set. A second invitation then found the row, concluded "they already
+     * have an account", took the manual path, and sent them to a sign-in
+     * screen for credentials that do not exist. The person is told the
+     * password is incorrect, which is true and useless: there is no password
+     * to be correct.
+     *
+     * Supabase marks these stubs by leaving last_sign_in_at null. Someone who
+     * has genuinely used the platform has signed in at least once, because
+     * that is how they set their password in the first place.
+     */
+    const isUnclaimedInviteStub = Boolean(
+      existingUser && !existingUser.last_sign_in_at
+    );
+
+    const hasUsableAccount = Boolean(
+      existingUser && !isUnclaimedInviteStub
+    );
+
     if (existingUser) {
       const { data: existingMember, error: existingMemberError } = await admin
         .from("company_members")
@@ -200,7 +224,7 @@ export async function POST(request: Request) {
 
     const inviteUrl = buildInviteUrl(token);
 
-    if (existingUser) {
+    if (hasUsableAccount) {
       /*
        * No email is sent on this path. Supabase's invite endpoint would
        * refuse, and there is no application-side mailer - transactional mail
