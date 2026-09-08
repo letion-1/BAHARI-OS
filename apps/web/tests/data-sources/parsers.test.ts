@@ -246,3 +246,133 @@ describe("colour convention handling", () => {
     expect(typeof detection.confidence).toBe("number");
   });
 });
+describe("month calendars without a stated year", () => {
+  function cell(
+    row: number,
+    column: number,
+    value: unknown,
+    fill?: string
+  ) {
+    return {
+      row,
+      column,
+      address: `${String.fromCharCode(64 + column)}${row}`,
+      value: value as never,
+      ...(fill ? { fill: { foregroundColor: fill } } : {}),
+    };
+  }
+
+  function calendarSheet(name: string, heading: string | null) {
+    const cells = [];
+    let row = 1;
+
+    if (heading) {
+      cells.push(cell(row, 1, heading));
+      row += 1;
+    }
+
+    const weekdays = [
+      "SATURDAY",
+      "SUNDAY",
+      "MONDAY",
+      "TUESDAY",
+      "WEDNESDAY",
+      "THURSDAY",
+      "FRIDAY",
+    ];
+
+    weekdays.forEach((day, index) => cells.push(cell(row, index + 1, day)));
+    row += 1;
+
+    for (let day = 1; day <= 28; day += 1) {
+      /*
+       * Red, the way these sheets actually mark a reserved week. Status is
+       * carried entirely in the fill: there is no text to read, so a day cell
+       * without one produces "unknown" and the parser emits nothing.
+       */
+      cells.push(
+        cell(
+          row + Math.floor((day - 1) / 7),
+          ((day - 1) % 7) + 1,
+          day,
+          "FFFF0000"
+        )
+      );
+    }
+
+    const matrix: unknown[][] = [];
+
+    if (heading) {
+      matrix.push([heading]);
+    }
+
+    matrix.push(weekdays);
+
+    return {
+      name,
+      range: null,
+      rowCount: matrix.length + 4,
+      columnCount: 7,
+      matrix: matrix as never,
+      cells,
+      merges: [],
+      records: [],
+    };
+  }
+
+  function workbook(sheets: ReturnType<typeof calendarSheet>[], fileName?: string) {
+    return {
+      kind: "workbook" as const,
+      sheetCount: sheets.length,
+      rowCount: sheets.reduce((total, sheet) => total + sheet.rowCount, 0),
+      sheetNames: sheets.map((sheet) => sheet.name),
+      sheets: sheets as never,
+      fileName,
+    };
+  }
+
+  it("takes the year from the document title when the tab has none", () => {
+    /*
+     * The NOVI DAN case. Tabs named MAY through OCTOBER, the season only in
+     * the file name. Requiring month and year in the same sample scored this
+     * at zero and every parser declined the whole workbook.
+     */
+    const parsed = parseYachtWorkbook(
+      workbook(
+        [calendarSheet("AUGUST", "AUGUST")],
+        "NOVI DAN BOOKING LIST 2026.xlsx"
+      )
+    );
+
+    expect(parsed.availability.length).toBeGreaterThan(0);
+    expect(parsed.availability[0].startDate ?? "").toContain("2026-08");
+  });
+
+  it("gives every tab the same year rather than guessing per tab", () => {
+    // Read in September, MAY would infer next year and OCTOBER this one,
+    // splitting a single season across two.
+    const parsed = parseYachtWorkbook(
+      workbook(
+        [
+          calendarSheet("MAY", "MAY"),
+          calendarSheet("OCTOBER", "OCTOBER"),
+        ],
+        "BOOKING LIST 2026.xlsx"
+      )
+    );
+
+    const years = new Set(
+      parsed.availability.map((window) => (window.startDate ?? "").slice(0, 4))
+    );
+
+    expect(years).toEqual(new Set(["2026"]));
+  });
+
+  it("reads a month heading inside the sheet, not only the tab name", () => {
+    const parsed = parseYachtWorkbook(
+      workbook([calendarSheet("Sheet1", "AUGUST")], "LIST 2026.xlsx")
+    );
+
+    expect(parsed.availability.length).toBeGreaterThan(0);
+  });
+});

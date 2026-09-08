@@ -66,10 +66,55 @@ export async function fetchGoogleSheets(
     workbookBuffer
   );
 
+  /*
+   * The document's real title, not the spreadsheet id.
+   *
+   * The export endpoint returns it in Content-Disposition, and it is the only
+   * place the title appears: the XLSX itself carries sheet names but nothing
+   * about the file. That matters because brokers write the season into the
+   * title - "NOVI DAN BOOKING LIST 2026" - and leave the tabs as bare month
+   * names. Without this the year is simply not in the data.
+   */
+  const documentTitle =
+    readContentDispositionFilename(
+      response.headers.get("content-disposition")
+    ) ?? `${spreadsheetId}.xlsx`;
+
+  workbook.fileName = documentTitle;
+
   return {
     kind: "workbook",
     sourceType: "google_sheets",
-    fileName: `${spreadsheetId}.xlsx`,
+    fileName: documentTitle,
     workbook,
   };
+}
+
+/**
+ * Pull the filename out of a Content-Disposition header.
+ *
+ * Google sends both `filename=` and the RFC 5987 `filename*=UTF-8''...` form.
+ * The starred one is preferred because it survives non-ASCII characters, and
+ * yacht names carry them constantly: Šibenik, Zoë, Côte d'Azur.
+ */
+function readContentDispositionFilename(
+  header: string | null
+): string | null {
+  if (!header) {
+    return null;
+  }
+
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1]).trim();
+    } catch {
+      // A malformed encoding is not worth failing the whole sync over.
+    }
+  }
+
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+
+  return plain ? plain[1].trim() : null;
 }

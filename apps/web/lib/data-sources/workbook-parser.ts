@@ -47,6 +47,16 @@ export interface ParsedWorkbook {
   rowCount: number;
   sheetNames: string[];
   sheets: ParsedWorksheet[];
+
+  /**
+   * The document's own name, where the connector could learn it.
+   *
+   * Carried because brokers put the season in the file name and nowhere else.
+   * A tab headed "AUGUST" inside "NOVI DAN BOOKING LIST 2026" is a complete
+   * statement to a person and an incomplete one to a parser, and the missing
+   * half is here.
+   */
+  fileName?: string;
 }
 
 interface SheetJsColor {

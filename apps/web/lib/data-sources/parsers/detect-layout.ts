@@ -211,6 +211,26 @@ function detectMonthlyCalendar(
     reasons.push(`The worksheet name "${worksheet.name}" is a month.`);
   }
 
+  /*
+   * A month heading inside the sheet counts too.
+   *
+   * A tab can be named "Sheet1" and still carry AUGUST in a merged cell
+   * across the top, which is how the calendar reads to a person. Scoring only
+   * the tab name missed that entirely.
+   */
+  const headingMonth = worksheet.cells
+    .slice(0, 12)
+    .some((cell) =>
+      MONTH_NAMES.has(
+        normalizeText(cell.formattedValue ?? cell.value).toLowerCase()
+      )
+    );
+
+  if (headingMonth && !MONTH_NAMES.has(sheetName)) {
+    score += 24;
+    reasons.push("A month name appears as a heading in the first rows.");
+  }
+
   const weekdayCount = worksheet.matrix
     .slice(0, 6)
     .flat()

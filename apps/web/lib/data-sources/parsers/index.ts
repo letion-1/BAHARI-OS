@@ -88,8 +88,24 @@ export function parseYachtWorkbook(
       kind: "workbook",
       sheetCount: 1,
       rowCount: sheet.rowCount,
-      sheetNames: [sheet.name],
       sheets: [sheet],
+
+      /*
+       * The file name has to survive the split.
+       *
+       * Splitting a workbook into one-sheet workbooks and dropping this
+       * loses the only place the season is written for a calendar whose tabs
+       * are bare month names. Each tab then falls back to inferring its own
+       * year, and a MAY tab and an OCTOBER tab read in September land in
+       * different years - one season, split in half.
+       */
+      fileName: workbook.fileName,
+
+      /*
+       * Every sheet name, not just this one, so a tab with no year of its own
+       * can still borrow one stated on a sibling tab.
+       */
+      sheetNames: workbook.sheetNames,
     };
 
     try {

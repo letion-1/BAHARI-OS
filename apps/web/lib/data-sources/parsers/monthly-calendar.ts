@@ -59,7 +59,7 @@ export const monthlyCalendarParser: WorkbookParser = {
 
   detect(workbook: ParsedWorkbook): ParserDetection {
     const sheet = workbook.sheets.find((candidate) =>
-      Boolean(findMonthYear(candidate))
+      Boolean(findMonthYear(candidate, workbook))
     );
 
     return {
@@ -81,7 +81,7 @@ export const monthlyCalendarParser: WorkbookParser = {
     const days: CalendarDay[] = [];
 
     for (const sheet of workbook.sheets) {
-      const monthYear = findMonthYear(sheet);
+      const monthYear = findMonthYear(sheet, workbook);
 
       if (!monthYear) {
         continue;
@@ -181,7 +181,91 @@ export const monthlyCalendarParser: WorkbookParser = {
   },
 };
 
-function findMonthYear(
+/**
+ * The year for the whole workbook, resolved once.
+ *
+ * Resolved per workbook rather than per sheet on purpose. A booking list with
+ * MAY through OCTOBER tabs, none of which states a year, would otherwise have
+ * each tab guess independently: read in September, MAY infers next year and
+ * OCTOBER infers this one, and a single season is split across two. One
+ * answer applied to every tab is wrong less often and never inconsistently.
+ *
+ * Order of preference, most trustworthy first:
+ *
+ *   1. A year written beside a month on any sheet. Explicit and unambiguous.
+ *   2. A four digit year in the document title. Brokers put the season there
+ *      constantly and nowhere else, which is exactly the NOVI DAN case.
+ *   3. A bare four digit year anywhere in the first rows of any sheet.
+ *   4. Inference from the calendar's own months.
+ */
+/** Same normalisation the other parsers use: trim, collapse, strip nbsp. */
+function normalizeText(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value)
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveWorkbookYear(
+  workbook: ParsedWorkbook
+): { year: number; inferred: boolean } {
+  for (const sheet of workbook.sheets) {
+    const explicit = findMonthYearOnSheet(sheet);
+
+    if (explicit) {
+      return { year: explicit.year, inferred: false };
+    }
+  }
+
+  const fromTitle = /\b(20\d{2})\b/.exec(workbook.fileName ?? "");
+
+  if (fromTitle) {
+    return { year: Number(fromTitle[1]), inferred: false };
+  }
+
+  for (const sheet of workbook.sheets) {
+    const sample = sheet.cells
+      .slice(0, 60)
+      .map((cell) => cell.formattedValue ?? String(cell.value ?? ""))
+      .join(" ");
+
+    const bare = /\b(20\d{2})\b/.exec(`${sheet.name} ${sample}`);
+
+    if (bare) {
+      return { year: Number(bare[1]), inferred: false };
+    }
+  }
+
+  /*
+   * Nothing states a year anywhere. A charter calendar is about a season that
+   * has not finished, so the year chosen is the one in which the latest month
+   * present has not yet passed.
+   *
+   * Marked inferred, because a wrong year puts a whole season on the wrong
+   * dates and the broker should be told rather than left to notice.
+   */
+  const now = new Date();
+
+  const months = workbook.sheets
+    .map((sheet) => MONTHS[normalizeText(sheet.name).toLowerCase()])
+    .filter((month): month is number => typeof month === "number");
+
+  const latest = months.length > 0 ? Math.max(...months) : 12;
+
+  const year =
+    latest < now.getUTCMonth() + 1
+      ? now.getUTCFullYear() + 1
+      : now.getUTCFullYear();
+
+  return { year, inferred: true };
+}
+
+/** A month and year stated together on one sheet. */
+function findMonthYearOnSheet(
   sheet: ParsedWorksheet
 ): { month: number; year: number } | null {
   const sample = [
@@ -225,6 +309,57 @@ function findMonthYear(
   }
 
   return null;
+}
+
+/**
+ * The month on a sheet, with the workbook's year applied.
+ *
+ * This is what unblocked NOVI DAN. The old version required a month and a
+ * year in the same sample, so a tab headed "AUGUST" inside a file called
+ * "... 2026" scored zero and every parser declined the whole workbook.
+ */
+function findMonthYear(
+  sheet: ParsedWorksheet,
+  workbook: ParsedWorkbook
+): { month: number; year: number } | null {
+  const stated = findMonthYearOnSheet(sheet);
+
+  if (stated) {
+    return stated;
+  }
+
+  const month = findMonthOnly(sheet);
+
+  if (month === null) {
+    return null;
+  }
+
+  return {
+    month,
+    year: resolveWorkbookYear(workbook).year,
+  };
+}
+
+/**
+ * A month named without a year.
+ *
+ * Restricted to the sheet name and the first handful of cells, because a
+ * month word can appear anywhere in a broker's notes - "confirm before
+ * August" - and matching that would date a calendar from a comment.
+ */
+function findMonthOnly(sheet: ParsedWorksheet): number | null {
+  const fromName = MONTHS[normalizeText(sheet.name).toLowerCase()];
+
+  if (typeof fromName === "number") {
+    return fromName;
+  }
+
+  const heading = sheet.cells
+    .slice(0, 12)
+    .map((cell) => normalizeText(cell.formattedValue ?? cell.value))
+    .find((value) => typeof MONTHS[value.toLowerCase()] === "number");
+
+  return heading ? MONTHS[heading.toLowerCase()] : null;
 }
 
 function parseCalendarDay(
